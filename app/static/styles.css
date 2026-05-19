@@ -1,0 +1,150 @@
+:root {
+  color-scheme: light;
+  --bg: #f5f7fb;
+  --panel: #ffffff;
+  --border: #d9e0ea;
+  --text: #142033;
+  --muted: #5f6b7a;
+  --accent: #2563eb;
+  --accent-soft: #e8efff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.panel {
+  width: min(1080px, 100%);
+  min-height: min(860px, calc(100vh - 48px));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  box-shadow: 0 18px 48px rgba(20, 32, 51, 0.08);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.status {
+  align-self: start;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.chat {
+  padding: 24px;
+  overflow-y: auto;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.msg {
+  max-width: 80%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.msg.user {
+  justify-self: end;
+  background: #eff6ff;
+  border-color: #bfd5ff;
+}
+
+.msg.assistant {
+  background: #fff;
+}
+
+.sources {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.composer {
+  display: flex;
+  gap: 12px;
+  padding: 20px 24px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.composer input {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 16px;
+}
+
+.composer button {
+  border: 0;
+  border-radius: 10px;
+  padding: 0 20px;
+  background: var(--accent);
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .panel {
+    min-height: calc(100vh - 24px);
+  }
+
+  .header,
+  .chat,
+  .composer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .header,
+  .composer {
+    flex-direction: column;
+  }
+
+  .msg {
+    max-width: 100%;
+  }
+}
+

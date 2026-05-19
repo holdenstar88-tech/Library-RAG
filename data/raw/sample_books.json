@@ -1,0 +1,36 @@
+[
+  {
+    "title": "Python 数据分析实战",
+    "author": "张三",
+    "isbn": "9787302523190",
+    "category": "数据分析",
+    "shelf": "A区 3层 12架",
+    "availability": "可借",
+    "borrow_rule": "普通读者可借 30 天，可续借 1 次",
+    "open_time": "周一至周日 08:00-22:00",
+    "summary": "介绍 Python 数据分析、清洗、可视化与项目实践。"
+  },
+  {
+    "title": "机器学习入门",
+    "author": "李四",
+    "isbn": "9787111634880",
+    "category": "人工智能",
+    "shelf": "B区 2层 08架",
+    "availability": "在馆",
+    "borrow_rule": "教师可借 60 天，学生可借 30 天",
+    "open_time": "周一至周五 08:30-21:30",
+    "summary": "覆盖监督学习、无监督学习和模型评估。"
+  },
+  {
+    "title": "深度学习导论",
+    "author": "王五",
+    "isbn": "9787121419110",
+    "category": "人工智能",
+    "shelf": "B区 3层 15架",
+    "availability": "可借",
+    "borrow_rule": "普通读者可借 20 天",
+    "open_time": "周一至周日 09:00-21:00",
+    "summary": "面向深度学习基础概念、神经网络和实战应用。"
+  }
+]
+

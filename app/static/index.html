@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智能校园图书 RAG 问答系统</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <section class="panel">
+      <header class="header">
+        <div>
+          <h1>智能校园图书 RAG 问答系统</h1>
+          <p>基于 LangChain、Milvus、BM25 和 DeepSeek 的校园图书问答演示。</p>
+        </div>
+        <div class="status" id="status">连接中</div>
+      </header>
+
+      <div class="chat" id="chat"></div>
+
+      <form class="composer" id="composer">
+        <input id="question" type="text" placeholder="例如：ISBN 9787302523190 的书在哪里？" autocomplete="off" />
+        <button type="submit">发送</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
+
