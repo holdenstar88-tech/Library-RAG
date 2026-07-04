@@ -1,0 +1,2 @@
+book_id,title,author,isbn,call_number,category,subjects,main_characters,plot_summary,shelf_code,shelf_row,shelf_col,floor,area,copy_count,available_count,availability,borrow_rule,open_time
+LIB-2026-1001,示例书名,示例作者,9780000000000,I247.57/S99,文学,"主题一;主题二","主角一;主角二",这里填写书籍大意或内容概述,F,1,2,二层,文学区,3,2,可借,学生可借 30 天,周一至周日 08:00-22:00

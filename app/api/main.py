@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.models import ChatRequest, ChatResponse, HealthResponse
+from app.models import CatalogSearchRequest, CatalogSearchResponse, ChatRequest, ChatResponse, HealthResponse
 from app.services.library_rag import get_service
 
 
@@ -36,6 +36,11 @@ def health() -> HealthResponse:
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
     return get_service().answer(payload.question, payload.session_id)
+
+
+@app.post("/api/catalog/search", response_model=CatalogSearchResponse)
+def catalog_search(payload: CatalogSearchRequest) -> CatalogSearchResponse:
+    return get_service().search_catalog(payload)
 
 
 @app.post("/api/reindex", response_model=HealthResponse)

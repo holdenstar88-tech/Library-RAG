@@ -11,10 +11,29 @@ from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
 
 
-ISBN_RE = re.compile(r"(?i)\b(?:isbn[:：]?\s*)?([0-9xX-]{10,20})\b")
+ISBN_RE = re.compile(r"(?i)\bisbn[:：]?\s*([0-9xX-]{10,20})\b")
+BARE_ISBN_RE = re.compile(r"(?<![A-Za-z0-9-])([0-9][0-9xX-]{9,19})(?![A-Za-z0-9-])")
+BOOK_ID_RE = re.compile(r"(?i)\b(?:book[_\s-]?id|馆藏编号|条码号|编号)[:：]?\s*([A-Z0-9-]{3,32})\b")
+CALL_NUMBER_RE = re.compile(r"(?:索书号|分类号|call\s*number)[:：]?\s*([A-Za-z0-9./-]{2,40})", re.I)
 TITLE_RE = re.compile(r"书名[:：]\s*([^\s，。,;；]{2,60})")
 AUTHOR_RE = re.compile(r"作者[:：]\s*([^\s，。,;；]{2,40})")
 CATEGORY_RE = re.compile(r"分类[:：]\s*([^\s，。,;；]{2,40})")
+CHARACTER_RE = re.compile(r"(?:主角|人物)[:：]?\s*([^\s，。,;；]{2,40})")
+SUBJECT_RE = re.compile(r"(?:主题|主题词|内容)[:：]?\s*([^\s，。,;；]{2,60})")
+
+POPULAR_CATEGORIES = [
+    "文学",
+    "历史",
+    "科幻",
+    "计算机",
+    "艺术",
+    "哲学",
+    "社科",
+    "教育",
+    "医学",
+    "自然科学",
+    "经济管理",
+]
 
 
 @dataclass(frozen=True)
@@ -40,9 +59,17 @@ def document_key(document: Document) -> str:
 
 def infer_metadata_filters(question: str) -> dict[str, str]:
     filters: dict[str, str] = {}
-    isbn_match = ISBN_RE.search(question)
+    book_id_match = BOOK_ID_RE.search(question)
+    if book_id_match:
+        filters["book_id"] = book_id_match.group(1).upper()
+    isbn_match = ISBN_RE.search(question) or BARE_ISBN_RE.search(question)
     if isbn_match:
-        filters["isbn"] = isbn_match.group(1).replace("-", "")
+        normalized_isbn = isbn_match.group(1).replace("-", "")
+        if len(normalized_isbn) in {10, 13}:
+            filters["isbn"] = normalized_isbn
+    call_number_match = CALL_NUMBER_RE.search(question)
+    if call_number_match:
+        filters["call_number"] = call_number_match.group(1)
     title_match = TITLE_RE.search(question)
     if title_match:
         filters["title"] = title_match.group(1)
@@ -52,6 +79,19 @@ def infer_metadata_filters(question: str) -> dict[str, str]:
     category_match = CATEGORY_RE.search(question)
     if category_match:
         filters["category"] = category_match.group(1)
+    else:
+        for category in POPULAR_CATEGORIES:
+            if category in question:
+                filters["category"] = category
+                break
+    character_match = CHARACTER_RE.search(question)
+    if character_match:
+        filters["main_characters"] = character_match.group(1)
+    subject_match = SUBJECT_RE.search(question)
+    if subject_match:
+        filters["subjects"] = subject_match.group(1)
+    if "可借" in question or "能借" in question or "在馆" in question:
+        filters["available_only"] = "true"
     return filters
 
 
@@ -60,8 +100,22 @@ def metadata_matches(document: Document, filters: dict[str, str]) -> bool:
         return True
     metadata = document.metadata or {}
     for key, expected in filters.items():
+        if key == "available_only":
+            if str(expected).lower() != "true":
+                continue
+            available_count = metadata.get("available_count")
+            if available_count is not None:
+                try:
+                    if int(available_count) > 0:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+            availability = str(metadata.get("availability", "") or "")
+            if "可借" not in availability and "在馆" not in availability:
+                return False
+            continue
         value = str(metadata.get(key, "") or "")
-        if key == "isbn":
+        if key in {"isbn", "book_id"}:
             if expected.replace("-", "") not in value.replace("-", ""):
                 return False
         elif expected.lower() not in value.lower():

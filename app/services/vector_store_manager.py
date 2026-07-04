@@ -4,8 +4,12 @@ import time
 from functools import lru_cache
 from typing import Iterable
 
-from langchain_community.vectorstores import Milvus
 from langchain_core.documents import Document
+
+try:
+    from langchain_community.vectorstores.milvus import Milvus
+except ImportError:
+    from langchain_community.vectorstores import Milvus
 
 from app.config import Settings, get_settings
 from app.services.vector_embedding_service import get_vector_embedding_service

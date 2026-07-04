@@ -3,24 +3,65 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>智能校园图书 RAG 问答系统</title>
+  <title>智能校园图书查询系统</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
   <main class="shell">
-    <section class="panel">
-      <header class="header">
-        <div>
-          <h1>智能校园图书 RAG 问答系统</h1>
-          <p>基于 LangChain、Milvus、BM25 和 DeepSeek 的校园图书问答演示。</p>
+    <header class="topbar">
+      <div>
+        <h1>智能校园图书查询系统</h1>
+        <p>按书名、作者、ISBN、馆藏编号、主角、内容大意或分类检索馆藏。</p>
+      </div>
+      <div class="status" id="status">连接中</div>
+    </header>
+
+    <section class="search-panel">
+      <form class="search-form" id="search-form">
+        <input id="query" type="search" placeholder="例如：主角孙悟空、讲外星文明的科幻书、ISBN 9787020002207" autocomplete="off" />
+        <button type="submit">检索</button>
+      </form>
+      <div class="advanced">
+        <input id="field-title" type="text" placeholder="书名" />
+        <input id="field-author" type="text" placeholder="作者" />
+        <input id="field-isbn" type="text" placeholder="ISBN" />
+        <input id="field-book-id" type="text" placeholder="馆藏编号" />
+        <input id="field-call-number" type="text" placeholder="索书号" />
+        <label class="check"><input id="available-only" type="checkbox" /> 仅看可借</label>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <aside class="sidebar">
+        <h2>图书分类</h2>
+        <div class="categories" id="categories"></div>
+      </aside>
+
+      <section class="results-area">
+        <div class="results-head">
+          <div>
+            <h2>检索结果</h2>
+            <p id="result-count">等待检索</p>
+          </div>
+          <button id="clear-filters" type="button">重置</button>
         </div>
-        <div class="status" id="status">连接中</div>
-      </header>
+        <div class="results" id="results"></div>
+      </section>
 
+      <aside class="detail" id="detail">
+        <h2>馆藏详情</h2>
+        <p class="empty">选择一本书查看馆藏编号、书架位置和内容大意。</p>
+      </aside>
+    </section>
+
+    <section class="assistant-panel">
+      <div class="assistant-head">
+        <h2>智能咨询</h2>
+        <p>需要解释借阅规则或让系统总结检索依据时，可以继续问。</p>
+      </div>
       <div class="chat" id="chat"></div>
-
       <form class="composer" id="composer">
-        <input id="question" type="text" placeholder="例如：ISBN 9787302523190 的书在哪里？" autocomplete="off" />
+        <input id="question" type="text" placeholder="例如：推荐一本关于明朝历史的可借图书" autocomplete="off" />
         <button type="submit">发送</button>
       </form>
     </section>
@@ -29,4 +70,3 @@
   <script src="/static/app.js"></script>
 </body>
 </html>
-

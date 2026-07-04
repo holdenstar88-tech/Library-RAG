@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from langchain_core.embeddings import Embeddings
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.embeddings.dashscope import DashScopeEmbeddings
 from langchain_openai import OpenAIEmbeddings
 
@@ -94,6 +93,8 @@ class VectorEmbeddingService:
                 model=self.settings.embedding_model,
                 dashscope_api_key=self._shared_api_key(),
             )
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+
         return HuggingFaceEmbeddings(
             model_name=self.settings.embedding_model,
             model_kwargs={"device": self.settings.embedding_device},

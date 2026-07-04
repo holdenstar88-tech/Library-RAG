@@ -24,6 +24,31 @@ def _safe_metadata(value: object) -> str:
     return text if text else ""
 
 
+def _safe_int(value: object, default: int = 0) -> int:
+    text = _normalize_text(value)
+    if not text:
+        return default
+    try:
+        return int(text)
+    except ValueError:
+        raise ValueError(f"Expected integer value, got {text!r}") from None
+
+
+def _list_metadata(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [_normalize_text(item) for item in value if _normalize_text(item)]
+    text = _normalize_text(value)
+    if not text:
+        return []
+    return [part.strip() for part in re.split(r"[,，;；、|]", text) if part.strip()]
+
+
+def _join_list(values: list[str]) -> str:
+    return "、".join(values)
+
+
 def _source_metadata(path: Path, source_type: str) -> dict[str, str]:
     return {
         "source": path.name,
@@ -33,30 +58,71 @@ def _source_metadata(path: Path, source_type: str) -> dict[str, str]:
     }
 
 
+REQUIRED_BOOK_FIELDS = ("book_id", "title", "category", "shelf_code", "shelf_row", "shelf_col")
+
+
+def validate_book_record(record: dict[str, object], source_path: Path, index: int) -> None:
+    aliases = {
+        "title": ("title", "book_name"),
+        "category": ("category", "type"),
+        "shelf_code": ("shelf_code", "shelf"),
+        "shelf_row": ("shelf_row", "row"),
+        "shelf_col": ("shelf_col", "col", "column"),
+    }
+    missing = []
+    for field in REQUIRED_BOOK_FIELDS:
+        keys = aliases.get(field, (field,))
+        if not any(_normalize_text(record.get(key)) for key in keys):
+            missing.append(field)
+    if missing:
+        fields = ", ".join(missing)
+        raise ValueError(f"{source_path.name} record #{index + 1} missing required field(s): {fields}")
+
+
 def _record_to_document(record: dict[str, object], source_path: Path, index: int) -> Document:
+    validate_book_record(record, source_path, index)
+    book_id = _safe_metadata(record.get("book_id") or record.get("barcode") or record.get("accession_no"))
     title = _safe_metadata(record.get("title") or record.get("book_name"))
     author = _safe_metadata(record.get("author") or record.get("writer"))
     isbn = _safe_metadata(record.get("isbn"))
     category = _safe_metadata(record.get("category") or record.get("type"))
-    shelf = _safe_metadata(record.get("shelf") or record.get("location"))
+    call_number = _safe_metadata(record.get("call_number") or record.get("classification_no"))
+    subjects = _list_metadata(record.get("subjects") or record.get("keywords"))
+    main_characters = _list_metadata(record.get("main_characters") or record.get("characters") or record.get("protagonists"))
+    plot_summary = _safe_metadata(record.get("plot_summary") or record.get("book_summary") or record.get("summary") or record.get("description"))
+    shelf_code = _safe_metadata(record.get("shelf_code") or record.get("shelf"))
+    shelf_row = _safe_int(record.get("shelf_row") or record.get("row"), default=1)
+    shelf_col = _safe_int(record.get("shelf_col") or record.get("col") or record.get("column"), default=1)
+    floor = _safe_metadata(record.get("floor"))
+    area = _safe_metadata(record.get("area"))
+    copy_count = _safe_int(record.get("copy_count"), default=1)
+    available_count = _safe_int(record.get("available_count"), default=copy_count)
+    shelf = f"{shelf_code}书架 第{shelf_row}行 第{shelf_col}列"
     availability = _safe_metadata(record.get("availability") or record.get("status"))
     borrow_rule = _safe_metadata(record.get("borrow_rule") or record.get("borrow_rules"))
     open_time = _safe_metadata(record.get("open_time") or record.get("opening_hours"))
     faq = _safe_metadata(record.get("faq"))
-    summary = _safe_metadata(record.get("summary") or record.get("description"))
 
     content = "\n".join(
         part
         for part in [
+            f"馆藏编号: {book_id}" if book_id else "",
             f"书名: {title}" if title else "",
             f"作者: {author}" if author else "",
             f"ISBN: {isbn}" if isbn else "",
+            f"索书号: {call_number}" if call_number else "",
             f"分类: {category}" if category else "",
+            f"主题词: {_join_list(subjects)}" if subjects else "",
+            f"主角: {_join_list(main_characters)}" if main_characters else "",
             f"馆藏位置: {shelf}" if shelf else "",
+            f"楼层: {floor}" if floor else "",
+            f"区域: {area}" if area else "",
             f"馆藏状态: {availability}" if availability else "",
+            f"馆藏册数: {copy_count}",
+            f"可借册数: {available_count}",
             f"借阅规则: {borrow_rule}" if borrow_rule else "",
             f"开放时间: {open_time}" if open_time else "",
-            f"简介: {summary}" if summary else "",
+            f"书籍大意: {plot_summary}" if plot_summary else "",
             f"FAQ: {faq}" if faq else "",
         ]
         if part
@@ -66,11 +132,23 @@ def _record_to_document(record: dict[str, object], source_path: Path, index: int
         **_source_metadata(source_path, "json"),
         "doc_type": "book_record",
         "record_index": index,
+        "book_id": book_id,
         "title": title,
         "author": author,
         "isbn": isbn,
+        "call_number": call_number,
         "category": category,
+        "subjects": _join_list(subjects),
+        "main_characters": _join_list(main_characters),
+        "plot_summary": plot_summary,
         "shelf": shelf,
+        "shelf_code": shelf_code,
+        "shelf_row": shelf_row,
+        "shelf_col": shelf_col,
+        "floor": floor,
+        "area": area,
+        "copy_count": copy_count,
+        "available_count": available_count,
         "availability": availability,
         "borrow_rule": borrow_rule,
         "open_time": open_time,
@@ -116,8 +194,11 @@ def _load_txt(path: Path) -> list[Document]:
 
 
 def _load_csv(path: Path) -> list[Document]:
-    loader = CSVLoader(file_path=str(path), encoding="utf-8")
-    documents = loader.load()
+    documents: list[Document] = []
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for index, record in enumerate(reader):
+            documents.append(_record_to_document(dict(record), path, index))
     for document in documents:
         document.metadata.update(_source_metadata(path, "csv"))
     return documents

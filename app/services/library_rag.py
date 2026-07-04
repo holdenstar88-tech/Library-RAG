@@ -10,13 +10,14 @@ from app.config import Settings, get_settings
 from app.generation.rag import clarify_answer, generate_answer, make_llm
 from app.ingestion.chunking import split_documents
 from app.ingestion.loaders import load_documents_from_dir
-from app.models import ChatResponse, HealthResponse, SourceItem
+from app.models import CatalogSearchRequest, CatalogSearchResponse, ChatResponse, HealthResponse, SourceItem
 from app.retrieval.hybrid import (
     apply_filters,
     build_bm25_index,
     bm25_search,
     compute_confidence,
     infer_metadata_filters,
+    metadata_matches,
     rrf_fuse,
 )
 from app.services.metadata_store import MetadataStore
@@ -100,14 +101,56 @@ class LibraryRAGService:
     def append_history(self, session_id: str, role: str, content: str) -> None:
         self._history[session_id].append({"role": role, "content": content})
 
+    def _categories(self) -> list[str]:
+        categories = {
+            str((document.metadata or {}).get("category") or "").strip()
+            for document in self.documents
+        }
+        return sorted(category for category in categories if category)
+
+    def _source_item(self, document: Any, rank: int, score: float | None = None) -> SourceItem:
+        metadata = document.metadata or {}
+        return SourceItem(
+            rank=rank,
+            score=float(score if score is not None else max(0.0, 1.0 - rank * 0.1)),
+            book_id=metadata.get("book_id"),
+            title=metadata.get("title") or metadata.get("h2") or metadata.get("h1"),
+            author=metadata.get("author"),
+            isbn=metadata.get("isbn"),
+            call_number=metadata.get("call_number"),
+            category=metadata.get("category"),
+            subjects=metadata.get("subjects"),
+            main_characters=metadata.get("main_characters"),
+            plot_summary=metadata.get("plot_summary"),
+            shelf=metadata.get("shelf"),
+            shelf_code=metadata.get("shelf_code"),
+            shelf_row=metadata.get("shelf_row"),
+            shelf_col=metadata.get("shelf_col"),
+            floor=metadata.get("floor"),
+            area=metadata.get("area"),
+            copy_count=metadata.get("copy_count"),
+            available_count=metadata.get("available_count"),
+            availability=metadata.get("availability"),
+            borrow_rule=metadata.get("borrow_rule"),
+            open_time=metadata.get("open_time"),
+            source=metadata.get("source_name") or metadata.get("source"),
+            excerpt=document.page_content[:240],
+            metadata=metadata,
+        )
+
     def retrieve(self, question: str) -> SearchArtifacts:
         filters = infer_metadata_filters(question)
+        prefiltered_documents = [document for document in self.documents if metadata_matches(document, filters)]
+        if filters and prefiltered_documents:
+            bm25_index, bm25_documents, _ = build_bm25_index(prefiltered_documents)
+        else:
+            bm25_index, bm25_documents = self.bm25_index, self.bm25_documents
         bm25_results = apply_filters(
-            bm25_search(self.bm25_index, self.bm25_documents, question, self.settings.search_top_k),
+            bm25_search(bm25_index, bm25_documents, question, self.settings.search_top_k),
             filters,
         )
         vector_results = apply_filters(
-            self.vector_search_service.search_similar_documents(question, self.settings.search_top_k),
+            self.vector_search_service.search_similar_documents(question, self.settings.search_top_k * 4),
             filters,
         )
         fused = rrf_fuse(bm25_results, vector_results)
@@ -118,6 +161,65 @@ class LibraryRAGService:
             confidence=confidence,
             filters=filters,
             fallback=not fused,
+        )
+
+    def _request_filters(self, payload: CatalogSearchRequest) -> dict[str, str]:
+        filters = infer_metadata_filters(payload.query)
+        direct_fields = {
+            "category": payload.category,
+            "author": payload.author,
+            "title": payload.title,
+            "isbn": payload.isbn,
+            "book_id": payload.book_id,
+            "call_number": payload.call_number,
+            "main_characters": payload.main_character,
+            "subjects": payload.subject,
+        }
+        for key, value in direct_fields.items():
+            if value:
+                filters[key] = value
+        if payload.available_only:
+            filters["available_only"] = "true"
+        return filters
+
+    def search_catalog(self, payload: CatalogSearchRequest) -> CatalogSearchResponse:
+        query = payload.query.strip()
+        filters = self._request_filters(payload)
+        candidates = [document for document in self.documents if metadata_matches(document, filters)]
+        exact_fields = {"book_id", "isbn", "call_number"}
+        exact = []
+        if exact_fields.intersection(filters):
+            exact = candidates
+        if query:
+            bm25_index, bm25_documents, _ = build_bm25_index(candidates or self.documents)
+            bm25_results = apply_filters(bm25_search(bm25_index, bm25_documents, query, payload.limit), filters)
+            vector_results = apply_filters(
+                self.vector_search_service.search_similar_documents(query, min(payload.limit * 3, 50)),
+                filters,
+            )
+            fused = rrf_fuse(
+                [item for item in bm25_results if item.document not in exact],
+                [item for item in vector_results if item.document not in exact],
+            )
+            documents = exact + [item.document for item in fused]
+        else:
+            documents = candidates
+        seen: set[str] = set()
+        unique = []
+        for document in documents:
+            metadata = document.metadata or {}
+            key = str(metadata.get("book_id") or metadata.get("isbn") or metadata.get("chunk_id") or id(document))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(document)
+        results = [self._source_item(document, rank) for rank, document in enumerate(unique[: payload.limit], start=1)]
+        return CatalogSearchResponse(
+            query=query,
+            results=results,
+            total=len(unique),
+            categories=self._categories(),
+            fallback=not results,
         )
 
     def answer(self, question: str, session_id: str | None = None) -> ChatResponse:
@@ -131,22 +233,7 @@ class LibraryRAGService:
             answer_text, fallback = generate_answer(self.llm, question, artifacts.documents, self.history(sid))
         self.append_history(sid, "assistant", answer_text)
 
-        sources = []
-        for rank, document in enumerate(artifacts.documents, start=1):
-            metadata = document.metadata or {}
-            sources.append(
-                SourceItem(
-                    rank=rank,
-                    score=float(max(0.0, 1.0 - rank * 0.1)),
-                    title=metadata.get("title") or metadata.get("h2") or metadata.get("h1"),
-                    author=metadata.get("author"),
-                    isbn=metadata.get("isbn"),
-                    category=metadata.get("category"),
-                    source=metadata.get("source_name") or metadata.get("source"),
-                    excerpt=document.page_content[:240],
-                    metadata=metadata,
-                )
-            )
+        sources = [self._source_item(document, rank) for rank, document in enumerate(artifacts.documents, start=1)]
         return ChatResponse(
             session_id=sid,
             answer=answer_text,

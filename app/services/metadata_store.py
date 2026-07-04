@@ -37,11 +37,23 @@ class StoredChunk:
     chunk_index: int
     chunk_hash: str
     content: str
+    book_id: str | None
     title: str | None
     author: str | None
     isbn: str | None
+    call_number: str | None
     category: str | None
+    subjects: str | None
+    main_characters: str | None
+    plot_summary: str | None
     shelf: str | None
+    shelf_code: str | None
+    shelf_row: int | None
+    shelf_col: int | None
+    floor: str | None
+    area: str | None
+    copy_count: int | None
+    available_count: int | None
     availability: str | None
     borrow_rule: str | None
     open_time: str | None
@@ -97,11 +109,23 @@ class MetadataStore:
                     chunk_index INTEGER NOT NULL,
                     chunk_hash TEXT NOT NULL,
                     content TEXT NOT NULL,
+                    book_id TEXT,
                     title TEXT,
                     author TEXT,
                     isbn TEXT,
+                    call_number TEXT,
                     category TEXT,
+                    subjects TEXT,
+                    main_characters TEXT,
+                    plot_summary TEXT,
                     shelf TEXT,
+                    shelf_code TEXT,
+                    shelf_row INTEGER,
+                    shelf_col INTEGER,
+                    floor TEXT,
+                    area TEXT,
+                    copy_count INTEGER,
+                    available_count INTEGER,
                     availability TEXT,
                     borrow_rule TEXT,
                     open_time TEXT,
@@ -113,13 +137,40 @@ class MetadataStore:
                 )
                 """
             )
+            self._ensure_chunk_columns(conn)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_path ON documents(source_path)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_source_path ON chunks(source_path)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_status ON chunks(status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON chunks(doc_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_isbn ON chunks(isbn)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_book_id ON chunks(book_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_call_number ON chunks(call_number)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_category ON chunks(category)")
             conn.commit()
+
+    def _ensure_chunk_columns(self, conn: sqlite3.Connection) -> None:
+        existing = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(chunks)").fetchall()
+        }
+        columns = {
+            "book_id": "TEXT",
+            "call_number": "TEXT",
+            "subjects": "TEXT",
+            "main_characters": "TEXT",
+            "plot_summary": "TEXT",
+            "shelf_code": "TEXT",
+            "shelf_row": "INTEGER",
+            "shelf_col": "INTEGER",
+            "floor": "TEXT",
+            "area": "TEXT",
+            "copy_count": "INTEGER",
+            "available_count": "INTEGER",
+        }
+        for name, column_type in columns.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE chunks ADD COLUMN {name} {column_type}")
 
     def get_active_document(self, source_path: str | Path) -> sqlite3.Row | None:
         normalized = normalize_source_path(source_path)
@@ -255,9 +306,12 @@ class MetadataStore:
                     INSERT INTO chunks (
                         chunk_id, doc_id, vector_id, source_path, source_name, source_type,
                         file_hash, file_mtime, version, chunk_index, chunk_hash, content,
-                        title, author, isbn, category, shelf, availability, borrow_rule, open_time,
+                        book_id, title, author, isbn, call_number, category, subjects,
+                        main_characters, plot_summary, shelf, shelf_code, shelf_row,
+                        shelf_col, floor, area, copy_count, available_count, availability,
+                        borrow_rule, open_time,
                         status, created_at, updated_at, deleted_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL)
                     """,
                     (
                         chunk_id,
@@ -272,11 +326,23 @@ class MetadataStore:
                         int(metadata.get("chunk_index", index)),
                         str(metadata.get("chunk_hash") or ""),
                         str(chunk.get("content") or ""),
+                        metadata.get("book_id"),
                         metadata.get("title"),
                         metadata.get("author"),
                         metadata.get("isbn"),
+                        metadata.get("call_number"),
                         metadata.get("category"),
+                        metadata.get("subjects"),
+                        metadata.get("main_characters"),
+                        metadata.get("plot_summary"),
                         metadata.get("shelf"),
+                        metadata.get("shelf_code"),
+                        metadata.get("shelf_row"),
+                        metadata.get("shelf_col"),
+                        metadata.get("floor"),
+                        metadata.get("area"),
+                        metadata.get("copy_count"),
+                        metadata.get("available_count"),
                         metadata.get("availability"),
                         metadata.get("borrow_rule"),
                         metadata.get("open_time"),
@@ -373,11 +439,23 @@ class MetadataStore:
             "version": row["version"],
             "chunk_index": row["chunk_index"],
             "chunk_hash": row["chunk_hash"],
+            "book_id": row["book_id"],
             "title": row["title"],
             "author": row["author"],
             "isbn": row["isbn"],
+            "call_number": row["call_number"],
             "category": row["category"],
+            "subjects": row["subjects"],
+            "main_characters": row["main_characters"],
+            "plot_summary": row["plot_summary"],
             "shelf": row["shelf"],
+            "shelf_code": row["shelf_code"],
+            "shelf_row": row["shelf_row"],
+            "shelf_col": row["shelf_col"],
+            "floor": row["floor"],
+            "area": row["area"],
+            "copy_count": row["copy_count"],
+            "available_count": row["available_count"],
             "availability": row["availability"],
             "borrow_rule": row["borrow_rule"],
             "open_time": row["open_time"],
@@ -399,11 +477,23 @@ class MetadataStore:
             chunk_index=int(row["chunk_index"]),
             chunk_hash=str(row["chunk_hash"]),
             content=str(row["content"]),
+            book_id=row["book_id"],
             title=row["title"],
             author=row["author"],
             isbn=row["isbn"],
+            call_number=row["call_number"],
             category=row["category"],
+            subjects=row["subjects"],
+            main_characters=row["main_characters"],
+            plot_summary=row["plot_summary"],
             shelf=row["shelf"],
+            shelf_code=row["shelf_code"],
+            shelf_row=row["shelf_row"],
+            shelf_col=row["shelf_col"],
+            floor=row["floor"],
+            area=row["area"],
+            copy_count=row["copy_count"],
+            available_count=row["available_count"],
             availability=row["availability"],
             borrow_rule=row["borrow_rule"],
             open_time=row["open_time"],

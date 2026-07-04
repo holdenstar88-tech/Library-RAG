@@ -82,19 +82,43 @@ class VectorIndexService:
             )
             title = self._document_field(metadata, "title", "h2", "h1", "source_name")
             author = self._document_field(metadata, "author", "writer")
+            book_id = self._document_field(metadata, "book_id", "barcode", "accession_no")
             isbn = self._document_field(metadata, "isbn")
+            call_number = self._document_field(metadata, "call_number", "classification_no")
             category = self._document_field(metadata, "category", "type")
+            subjects = self._document_field(metadata, "subjects", "keywords")
+            main_characters = self._document_field(metadata, "main_characters", "characters", "protagonists")
+            plot_summary = self._document_field(metadata, "plot_summary", "book_summary", "summary", "description")
             shelf = self._document_field(metadata, "shelf", "location")
+            shelf_code = self._document_field(metadata, "shelf_code")
+            shelf_row = metadata.get("shelf_row")
+            shelf_col = metadata.get("shelf_col")
+            floor = self._document_field(metadata, "floor")
+            area = self._document_field(metadata, "area")
+            copy_count = metadata.get("copy_count")
+            available_count = metadata.get("available_count")
             availability = self._document_field(metadata, "availability", "status")
             borrow_rule = self._document_field(metadata, "borrow_rule", "borrow_rules")
             open_time = self._document_field(metadata, "open_time", "opening_hours")
             metadata.update(
                 {
+                    "book_id": book_id,
                     "title": title,
                     "author": author,
                     "isbn": isbn,
+                    "call_number": call_number,
                     "category": category,
+                    "subjects": subjects,
+                    "main_characters": main_characters,
+                    "plot_summary": plot_summary,
                     "shelf": shelf,
+                    "shelf_code": shelf_code,
+                    "shelf_row": shelf_row,
+                    "shelf_col": shelf_col,
+                    "floor": floor,
+                    "area": area,
+                    "copy_count": copy_count,
+                    "available_count": available_count,
                     "availability": availability,
                     "borrow_rule": borrow_rule,
                     "open_time": open_time,

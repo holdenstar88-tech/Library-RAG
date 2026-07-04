@@ -25,10 +25,16 @@ def format_context(documents: list[Document], max_chars: int = 4500) -> str:
         header = " | ".join(
             part
             for part in [
+                f"馆藏编号={metadata.get('book_id') or '未知'}",
                 f"标题={metadata.get('title') or metadata.get('h2') or metadata.get('h1') or '未知'}",
                 f"作者={metadata.get('author') or '未知'}",
                 f"ISBN={metadata.get('isbn') or '未知'}",
+                f"索书号={metadata.get('call_number') or '未知'}",
                 f"分类={metadata.get('category') or '未知'}",
+                f"主角={metadata.get('main_characters') or '未知'}",
+                f"主题词={metadata.get('subjects') or '未知'}",
+                f"位置={metadata.get('shelf') or '未知'}",
+                f"可借={metadata.get('available_count') if metadata.get('available_count') is not None else '未知'}",
                 f"来源={metadata.get('source_name') or metadata.get('source') or '未知'}",
                 f"状态={metadata.get('status') or '未知'}",
             ]
