@@ -23,7 +23,8 @@ class CatalogSearchRequest(BaseModel):
     main_character: str | None = None
     subject: str | None = None
     available_only: bool = False
-    limit: int = Field(default=12, ge=1, le=50)
+    page: int = Field(default=1, ge=1)
+    limit: int = Field(default=20, ge=1, le=50)
 
 
 class SourceItem(BaseModel):
@@ -58,6 +59,11 @@ class CatalogSearchResponse(BaseModel):
     query: str
     results: list[SourceItem] = Field(default_factory=list)
     total: int = 0
+    page: int = 1
+    limit: int = 20
+    total_pages: int = 0
+    has_prev: bool = False
+    has_next: bool = False
     categories: list[str] = Field(default_factory=list)
     fallback: bool = False
 

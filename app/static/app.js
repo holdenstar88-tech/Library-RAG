@@ -6,13 +6,17 @@ const resultCount = document.getElementById("result-count");
 const categoriesEl = document.getElementById("categories");
 const detailEl = document.getElementById("detail");
 const clearFilters = document.getElementById("clear-filters");
+const paginationEl = document.getElementById("pagination");
 const chat = document.getElementById("chat");
 const composer = document.getElementById("composer");
 const question = document.getElementById("question");
 const sessionKey = "library_rag_session_id";
 const categoryFallback = ["文学", "历史", "科幻", "计算机", "艺术", "哲学", "社科", "教育", "医学", "自然科学", "经济管理"];
+
 let selectedCategory = "";
 let lastResults = [];
+let currentPage = 1;
+let pageSize = 20;
 let sessionId = localStorage.getItem(sessionKey) || crypto.randomUUID();
 localStorage.setItem(sessionKey, sessionId);
 
@@ -30,7 +34,8 @@ function buildSearchPayload() {
     book_id: fieldValue("field-book-id") || null,
     call_number: fieldValue("field-call-number") || null,
     available_only: document.getElementById("available-only").checked,
-    limit: 24,
+    page: currentPage,
+    limit: pageSize,
   };
 }
 
@@ -40,7 +45,9 @@ function text(value, fallback = "未知") {
 
 function locationText(item) {
   if (item.shelf) return item.shelf;
-  if (item.shelf_code) return `${item.shelf_code}书架 第${text(item.shelf_row, "?")}行 第${text(item.shelf_col, "?")}列`;
+  if (item.shelf_code) {
+    return `${item.shelf_code}书架 第${text(item.shelf_row, "?")}行 第${text(item.shelf_col, "?")}列`;
+  }
   return "位置未登记";
 }
 
@@ -49,6 +56,10 @@ function availabilityText(item) {
     return `${item.available_count}/${text(item.copy_count, item.available_count)} 可借`;
   }
   return text(item.availability, "状态未知");
+}
+
+function resetToFirstPage() {
+  currentPage = 1;
 }
 
 function renderCategories(categories = []) {
@@ -61,6 +72,7 @@ function renderCategories(categories = []) {
     button.textContent = category;
     button.addEventListener("click", () => {
       selectedCategory = category === "全部" ? "" : category;
+      resetToFirstPage();
       renderCategories(categories);
       runSearch();
     });
@@ -68,14 +80,27 @@ function renderCategories(categories = []) {
   });
 }
 
-function renderResults(items) {
+function renderResults(items, meta = {}) {
   lastResults = items;
   resultsEl.innerHTML = "";
-  resultCount.textContent = items.length ? `显示 ${items.length} 条结果` : "没有匹配结果";
+  const total = meta.total || 0;
+  const page = meta.page || currentPage;
+  const totalPages = meta.total_pages || 0;
+
+  if (items.length) {
+    const start = (page - 1) * pageSize + 1;
+    const end = start + items.length - 1;
+    resultCount.textContent = `共 ${total} 条，显示第 ${start}-${end} 条`;
+  } else {
+    resultCount.textContent = "没有匹配结果";
+  }
+
   if (!items.length) {
     resultsEl.innerHTML = `<div class="empty-card">没有找到匹配馆藏，可以换一个主角、主题词、ISBN 或分类再试。</div>`;
+    renderPagination({ total, page, total_pages: totalPages, has_prev: false, has_next: false });
     return;
   }
+
   items.forEach((item, index) => {
     const card = document.createElement("button");
     card.type = "button";
@@ -97,6 +122,55 @@ function renderResults(items) {
     resultsEl.appendChild(card);
     if (index === 0) renderDetail(item);
   });
+  renderPagination(meta);
+}
+
+function renderPagination(meta = {}) {
+  const totalPages = meta.total_pages || 0;
+  const page = meta.page || currentPage;
+  paginationEl.innerHTML = "";
+  if (totalPages <= 1 && (meta.total || 0) <= pageSize) return;
+
+  const prev = document.createElement("button");
+  prev.type = "button";
+  prev.textContent = "上一页";
+  prev.disabled = !meta.has_prev;
+  prev.addEventListener("click", () => {
+    if (currentPage > 1) {
+      currentPage -= 1;
+      runSearch();
+    }
+  });
+
+  const next = document.createElement("button");
+  next.type = "button";
+  next.textContent = "下一页";
+  next.disabled = !meta.has_next;
+  next.addEventListener("click", () => {
+    if (currentPage < totalPages) {
+      currentPage += 1;
+      runSearch();
+    }
+  });
+
+  const info = document.createElement("span");
+  info.textContent = totalPages ? `第 ${page} / ${totalPages} 页` : "第 0 / 0 页";
+
+  const sizeSelect = document.createElement("select");
+  [10, 20, 50].forEach((size) => {
+    const option = document.createElement("option");
+    option.value = String(size);
+    option.textContent = `每页 ${size} 条`;
+    option.selected = size === pageSize;
+    sizeSelect.appendChild(option);
+  });
+  sizeSelect.addEventListener("change", () => {
+    pageSize = Number(sizeSelect.value);
+    resetToFirstPage();
+    runSearch();
+  });
+
+  paginationEl.append(prev, info, next, sizeSelect);
 }
 
 function renderDetail(item) {
@@ -141,7 +215,7 @@ async function runSearch() {
     });
     const data = await resp.json();
     renderCategories(data.categories || []);
-    renderResults(data.results || []);
+    renderResults(data.results || [], data);
     statusEl.textContent = data.fallback ? "未命中" : "馆藏已更新";
   } catch {
     statusEl.textContent = "服务不可用";
@@ -179,6 +253,7 @@ async function loadHealth() {
 
 searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  resetToFirstPage();
   runSearch();
 });
 
@@ -189,6 +264,7 @@ clearFilters.addEventListener("click", () => {
     document.getElementById(id).value = "";
   });
   document.getElementById("available-only").checked = false;
+  resetToFirstPage();
   runSearch();
 });
 

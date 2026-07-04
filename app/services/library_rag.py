@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from math import ceil
 from typing import Any
 from uuid import uuid4
 
@@ -186,15 +187,19 @@ class LibraryRAGService:
         query = payload.query.strip()
         filters = self._request_filters(payload)
         candidates = [document for document in self.documents if metadata_matches(document, filters)]
+        page = max(1, payload.page)
+        limit = payload.limit
+        offset = (page - 1) * limit
+        search_window = max(offset + limit, limit)
         exact_fields = {"book_id", "isbn", "call_number"}
         exact = []
         if exact_fields.intersection(filters):
             exact = candidates
         if query:
             bm25_index, bm25_documents, _ = build_bm25_index(candidates or self.documents)
-            bm25_results = apply_filters(bm25_search(bm25_index, bm25_documents, query, payload.limit), filters)
+            bm25_results = apply_filters(bm25_search(bm25_index, bm25_documents, query, search_window), filters)
             vector_results = apply_filters(
-                self.vector_search_service.search_similar_documents(query, min(payload.limit * 3, 50)),
+                self.vector_search_service.search_similar_documents(query, min(search_window * 3, 100)),
                 filters,
             )
             fused = rrf_fuse(
@@ -213,11 +218,22 @@ class LibraryRAGService:
                 continue
             seen.add(key)
             unique.append(document)
-        results = [self._source_item(document, rank) for rank, document in enumerate(unique[: payload.limit], start=1)]
+        page_items = unique[offset : offset + limit]
+        total = len(unique)
+        total_pages = ceil(total / limit) if total else 0
+        results = [
+            self._source_item(document, offset + rank)
+            for rank, document in enumerate(page_items, start=1)
+        ]
         return CatalogSearchResponse(
             query=query,
             results=results,
-            total=len(unique),
+            total=total,
+            page=page,
+            limit=limit,
+            total_pages=total_pages,
+            has_prev=page > 1 and total_pages > 0,
+            has_next=page < total_pages,
             categories=self._categories(),
             fallback=not results,
         )

@@ -7,6 +7,7 @@
 ## 功能
 
 - 馆藏查询界面：自然语言搜索、分类筛选、高级检索、详情面板
+- 检索分页：默认每页 20 条，支持 10/20/50 条切换，分类浏览和组合筛选均可分页
 - 通俗分类：文学、历史、科幻、计算机、艺术、哲学、社科、教育、医学、自然科学、经济管理
 - 精确馆藏字段：馆藏编号、ISBN、索书号、书架号、行、列、楼层、区域
 - 内容语义检索：支持通过主角名、主题词、剧情/书籍大意寻找书籍
@@ -68,9 +69,12 @@ CSV 模板见 `data/templates/book_import_template.csv`。JSON 示例见 `data/r
   "query": "主角 孙悟空",
   "category": "文学",
   "available_only": true,
-  "limit": 12
+  "page": 1,
+  "limit": 20
 }
 ```
+
+响应会返回 `total`、`page`、`limit`、`total_pages`、`has_prev`、`has_next`。分页默认值参考 Koha OPAC 的 `OPACnumSearchResults`：搜索结果默认每页 20 条；前端同时提供每页数量下拉，符合 Koha `OPACnumSearchResultsDropdown` 这类真实馆藏系统设置思路。
 
 ## 运行方式
 
