@@ -49,7 +49,7 @@ class LibraryRAGService:
         self.vector_search_service = get_vector_search_service()
         self.vector_store_manager = get_vector_store_manager()
         self.llm = make_llm(
-            self._shared_api_key(),
+            self._chat_api_key(),
             self.settings.deepseek_base_url,
             self.settings.deepseek_model,
         )
@@ -61,7 +61,7 @@ class LibraryRAGService:
             logger.warning("Incremental sync failed, falling back to loaded documents: %s", exc)
         self._refresh_corpus()
 
-    def _shared_api_key(self) -> str:
+    def _chat_api_key(self) -> str:
         return self.settings.deepseek_api_key or self.settings.api_key
 
     def _refresh_corpus(self) -> None:

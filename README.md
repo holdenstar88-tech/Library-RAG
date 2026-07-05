@@ -1,23 +1,33 @@
 # 智能校园图书 RAG 问答系统
 
-这是一个对标图书馆 OPAC/馆藏查询体验的校园图书 RAG 项目。系统支持精确馆藏编号查询、ISBN/索书号检索、通俗分类浏览、书架行列定位，以及基于主角、主题词和书籍大意的语义检索。
+一个面向校园图书馆场景的 RAG 检索与问答项目，目标是提供接近 OPAC/馆藏检索系统的使用体验：既能按馆藏编号、ISBN、索书号做精确查询，也能按主题词、主角、内容概述做语义检索，并结合 DeepSeek 给出自然语言回答。
 
-系统流程：数据导入校验 -> 文档切分 -> SQLite 元数据记录 -> Milvus 向量存储 -> 精确匹配 + BM25 + 向量检索 -> RRF 融合排序 -> DeepSeek 生成回答。
+系统主链路：
 
-## 功能
+`数据导入校验 -> 文档切分 -> SQLite 元数据记录 -> Milvus 向量存储 -> 精确匹配 + BM25 + 向量检索 -> RRF 融合排序 -> DeepSeek 生成回答`
 
-- 馆藏查询界面：自然语言搜索、分类筛选、高级检索、详情面板
-- 检索分页：默认每页 20 条，支持 10/20/50 条切换，分类浏览和组合筛选均可分页
-- 通俗分类：文学、历史、科幻、计算机、艺术、哲学、社科、教育、医学、自然科学、经济管理
-- 精确馆藏字段：馆藏编号、ISBN、索书号、书架号、行、列、楼层、区域
-- 内容语义检索：支持通过主角名、主题词、剧情/书籍大意寻找书籍
-- 混合检索：BM25 + Milvus 向量检索 + RRF 融合排序
-- 幻觉控制：低置信度时返回澄清式回答
-- 批量导入：支持 JSON 和 CSV，缺少关键字段时拒绝入库
+## 功能概览
+
+- 馆藏检索：自然语言搜索、分类筛选、高级字段检索、详情面板
+- 结果分页：默认每页 10 条，支持 10 / 20 / 50 条切换
+- 混合检索：BM25 + Milvus 向量召回 + RRF 融合排序
+- 语义问答：围绕馆藏信息、借阅规则、开放时间等生成中文回答
+- 低置信度兜底：证据不足时返回澄清式答案，减少幻觉
+- 批量导入：支持 JSON / CSV 数据源，缺失关键字段时拒绝入库
+- 前端助手：支持亮暗模式、右下角悬浮助手、浮层聊天和可拖拽定位
+
+## 模型与职责
+
+- `DeepSeek`：负责 `/api/chat` 的回答生成
+- `Milvus`：只负责向量检索与召回，不负责生成回答
+- `BM25`：补充关键词匹配，和向量结果一起做融合排序
+- `DashScope Embedding`（默认）：负责文本向量化
+
+也就是说，这个项目里“AI 助手回答问题”走的是 DeepSeek，而不是向量模型；向量库只提供候选上下文。
 
 ## 数据字段
 
-每条图书记录建议包含以下字段：
+建议每条图书记录包含以下字段：
 
 | 字段 | 含义 | 是否必填 |
 | --- | --- | --- |
@@ -25,11 +35,11 @@
 | `title` | 书名 | 是 |
 | `author` | 作者 | 否 |
 | `isbn` | ISBN | 否 |
-| `call_number` | 索书号/分类排架号 | 否 |
+| `call_number` | 索书号 / 分类排架号 | 否 |
 | `category` | 通俗分类 | 是 |
 | `subjects` | 主题词，JSON 可用数组，CSV 用分号分隔 | 否 |
-| `main_characters` | 主角/人物，JSON 可用数组，CSV 用分号分隔 | 否 |
-| `plot_summary` | 书籍大意/内容概述 | 否 |
+| `main_characters` | 主角 / 人物，JSON 可用数组，CSV 用分号分隔 | 否 |
+| `plot_summary` | 书籍大意 / 内容概述 | 否 |
 | `shelf_code` | 书架号，如 `F` | 是 |
 | `shelf_row` | 书架第几行 | 是 |
 | `shelf_col` | 书架第几列 | 是 |
@@ -41,7 +51,10 @@
 | `borrow_rule` | 借阅规则 | 否 |
 | `open_time` | 开放时间 | 否 |
 
-CSV 模板见 `data/templates/book_import_template.csv`。JSON 示例见 `data/raw/sample_books.json`。
+参考文件：
+
+- CSV 模板：`data/templates/book_import_template.csv`
+- JSON 示例：`data/raw/sample_books.json`
 
 位置编码示例：`shelf_code=F`、`shelf_row=1`、`shelf_col=2` 会展示为 `F书架 第1行 第2列`。
 
@@ -70,72 +83,82 @@ CSV 模板见 `data/templates/book_import_template.csv`。JSON 示例见 `data/r
   "category": "文学",
   "available_only": true,
   "page": 1,
-  "limit": 20
+  "limit": 10
 }
 ```
 
-响应会返回 `total`、`page`、`limit`、`total_pages`、`has_prev`、`has_next`。分页默认值参考 Koha OPAC 的 `OPACnumSearchResults`：搜索结果默认每页 20 条；前端同时提供每页数量下拉，符合 Koha `OPACnumSearchResultsDropdown` 这类真实馆藏系统设置思路。
+响应会返回 `total`、`page`、`limit`、`total_pages`、`has_prev`、`has_next`。当前前端默认每页 10 条，同时提供 10 / 20 / 50 条切换。
 
 ## 运行方式
 
-### Docker 一键运行
+### 1. Docker 一键运行
 
-1. 配置环境变量
+先复制环境变量模板：
 
 ```bash
 copy .env.example .env
 ```
 
-当前默认使用阿里云 DashScope Embedding，`.env` 至少需要配置：
+至少需要配置：
 
 ```env
 EMBEDDING_BACKEND=dashscope
-EMBEDDING_API_KEY=你的阿里云DashScope Key
+EMBEDDING_API_KEY=你的 DashScope Key
 EMBEDDING_MODEL=text-embedding-v4
 EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
-DEEPSEEK_API_KEY=你的DeepSeek Key
+DEEPSEEK_API_KEY=你的 DeepSeek Key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
 ```
 
-2. 构建并启动全部服务
+启动：
 
 ```bash
 docker compose up -d --build
 ```
 
-启动后应包含以下容器：
+查看状态：
 
 ```bash
 docker compose ps
 ```
 
-正常会看到 `rag-etcd`、`rag-minio`、`rag-milvus`、`rag-app` 均为运行状态。
+正常情况下应看到：
 
-3. 同步知识库
+- `rag-etcd`
+- `rag-minio`
+- `rag-milvus`
+- `rag-app`
+
+都处于运行状态。
+
+同步知识库：
 
 ```bash
 docker compose exec app python -m app.cli sync
 ```
 
-4. 检查健康状态
+检查健康状态：
 
 ```bash
 curl http://127.0.0.1:8000/api/health
 ```
 
-期望看到 `vector_store_ready=true`，并且 `documents_loaded` 大于 0。
+期望看到：
 
-5. 打开页面
+- `vector_store_ready=true`
+- `documents_loaded > 0`
+
+访问页面：
 
 ```text
 http://127.0.0.1:8000
 ```
 
-### 本地运行后端
+### 2. 本地运行后端
 
-如果只用 Docker 启动 Milvus 依赖，后端也可以在本地运行：
+如果只用 Docker 启 Milvus 依赖，也可以本地启动后端：
 
 ```bash
 docker compose up -d etcd minio milvus
@@ -144,13 +167,29 @@ python -m app.cli sync
 uvicorn app.api.main:app --reload
 ```
 
-### 常见问题
+## 当前前端交互
 
-- `rag-app Exited (1)`：先执行 `docker compose logs --tail=160 app` 查看 Python 报错。
-- 只有 `rag-etcd`、`rag-minio`、`rag-milvus`，没有 `rag-app`：通常是 app 镜像构建失败，执行 `docker compose build app --progress=plain` 看具体错误。
-- Docker 构建时下载很慢：本项目默认走 DashScope Embedding，已不需要 `sentence-transformers` 和 `torch`；确认 `.env` 中存在 `EMBEDDING_BACKEND=dashscope`。
-- PowerShell 中中文响应乱码：通常是控制台编码问题，浏览器页面使用 UTF-8 会正常显示。
-- 重新导入数据后页面没刷新：执行 `docker compose exec app python -m app.cli sync` 后，再调用 `POST /api/reindex` 或重启 `rag-app`。
+- 默认浅色主题，可切换亮暗模式
+- 右下角悬浮 AI 助手
+- 助手支持打开浮层聊天
+- 助手支持拖拽，位置会记住
+- 默认每页 10 条检索结果
+
+如果你修改了 `app/static` 下的前端资源，而当前站点运行在 Docker 容器里，需要重建 `rag-app`：
+
+```bash
+docker compose up -d --build --force-recreate app
+```
+
+然后浏览器执行 `Ctrl+F5`。
+
+## 常见问题
+
+- `rag-app Exited (1)`：执行 `docker compose logs --tail=160 app` 查看具体报错
+- 只有 `rag-etcd`、`rag-minio`、`rag-milvus`，没有 `rag-app`：通常是镜像构建失败，执行 `docker compose build app --progress=plain`
+- Docker 构建很慢：确认 `.env` 中使用的是 DashScope Embedding，而不是本地 HuggingFace 推理链路
+- PowerShell 里中文乱码：通常是控制台编码问题，浏览器页面使用 UTF-8 应正常显示
+- 导入后页面没变化：先执行 `python -m app.cli sync` 或容器内 `sync`，再调用 `/api/reindex` 或重启 `rag-app`
 
 ## 增量更新规则
 
@@ -159,6 +198,20 @@ uvicorn app.api.main:app --reload
 - 删除文件：旧版本标记为 `deleted`，同时删除对应 Milvus 向量
 - 检索时只使用 `status=active` 的数据
 
+## 隐私与提交说明
+
+- `.env`、`.env.*` 已被忽略，不应提交到仓库
+- `DEEPSEEK_API_KEY`、`EMBEDDING_API_KEY` 只应保留在本地配置中
+- 提交到 GitHub 时只提交代码、文档和示例数据，不提交真实密钥或私有运行数据
+
 ## 对标方向
 
-本项目借鉴真实图书馆系统常见能力：Koha 的 OPAC/编目/流通思路、LOC 分类体系中的索书号概念、VuFind 的分面检索体验、Evergreen 的馆藏与状态管理、WorldCat 的统一书目检索体验。当前版本聚焦馆藏查询和 RAG 问答，不包含登录、借还书、预约、罚款等流通业务。
+本项目参考了真实图书馆系统常见能力与体验：
+
+- Koha：OPAC / 编目 / 流通思路
+- LOC：索书号与分类体系概念
+- VuFind：分面检索体验
+- Evergreen：馆藏与状态管理
+- WorldCat：统一书目检索体验
+
+当前版本聚焦馆藏查询与 RAG 问答，不包含登录、借还书、预约、罚款等流通业务。

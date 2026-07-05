@@ -7,18 +7,28 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <main class="shell">
+  <div class="app-shell">
     <header class="topbar">
       <div>
         <h1>智能校园图书查询系统</h1>
         <p>按书名、作者、ISBN、馆藏编号、主角、内容大意或分类检索馆藏。</p>
       </div>
-      <div class="status" id="status">连接中</div>
+      <div class="topbar-actions">
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换亮暗模式" aria-pressed="false" title="切换亮暗模式">
+          <span class="theme-toggle-track">
+            <span class="theme-toggle-thumb">
+              <span class="theme-glyph sun-glyph" aria-hidden="true"></span>
+              <span class="theme-glyph moon-glyph" aria-hidden="true"></span>
+            </span>
+          </span>
+        </button>
+        <div class="status" id="status">连接中</div>
+      </div>
     </header>
 
     <section class="search-panel">
       <form class="search-form" id="search-form">
-        <input id="query" type="search" placeholder="例如：主角孙悟空、讲外星文明的科幻书、ISBN 9787020002207" autocomplete="off" />
+        <input id="query" type="search" placeholder="例如：孙悟空、科幻、ISBN 9787020002207" autocomplete="off" />
         <button type="submit">检索</button>
       </form>
       <div class="advanced">
@@ -54,19 +64,42 @@
         <p class="empty">选择一本书查看馆藏编号、书架位置和内容大意。</p>
       </aside>
     </section>
+  </div>
 
-    <section class="assistant-panel">
-      <div class="assistant-head">
-        <h2>智能咨询</h2>
-        <p>需要解释借阅规则或让系统总结检索依据时，可以继续问。</p>
-      </div>
-      <div class="chat" id="chat"></div>
-      <form class="composer" id="composer">
-        <input id="question" type="text" placeholder="例如：推荐一本关于明朝历史的可借图书" autocomplete="off" />
-        <button type="submit">发送</button>
-      </form>
-    </section>
-  </main>
+  <div class="assistant-shell">
+    <div class="assistant-popover" id="assistant-popover" aria-hidden="true">
+      <section class="assistant-card">
+        <header class="assistant-card-head">
+          <div class="assistant-brand">
+            <span class="assistant-avatar" aria-hidden="true">
+              <span class="assistant-avatar-dot"></span>
+              <span class="assistant-avatar-smile"></span>
+            </span>
+            <div>
+              <strong>智能咨询助手</strong>
+              <p>可继续问借阅规则、馆藏总结，或让我帮你缩小检索范围。</p>
+            </div>
+          </div>
+          <button class="assistant-close" id="assistant-close" type="button" aria-label="关闭助手">+</button>
+        </header>
+        <div class="chat" id="chat"></div>
+        <form class="composer" id="composer">
+          <input id="question" type="text" placeholder="例如：推荐一本关于明朝历史的可借图书" autocomplete="off" />
+          <button type="submit">发送</button>
+        </form>
+      </section>
+    </div>
+
+    <button class="assistant-launcher" id="assistant-launcher" type="button" aria-label="打开智能咨询助手" aria-expanded="false" title="智能咨询助手">
+      <span class="assistant-launcher-core">
+        <span class="assistant-launcher-face">
+          <span class="assistant-eye left-eye"></span>
+          <span class="assistant-eye right-eye"></span>
+          <span class="assistant-mouth"></span>
+        </span>
+      </span>
+    </button>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

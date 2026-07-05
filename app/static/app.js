@@ -1,4 +1,5 @@
 const statusEl = document.getElementById("status");
+const themeToggle = document.getElementById("theme-toggle");
 const searchForm = document.getElementById("search-form");
 const queryInput = document.getElementById("query");
 const resultsEl = document.getElementById("results");
@@ -10,14 +11,22 @@ const paginationEl = document.getElementById("pagination");
 const chat = document.getElementById("chat");
 const composer = document.getElementById("composer");
 const question = document.getElementById("question");
+const assistantShell = document.querySelector(".assistant-shell");
+const assistantLauncher = document.getElementById("assistant-launcher");
+const assistantPopover = document.getElementById("assistant-popover");
+const assistantClose = document.getElementById("assistant-close");
+
 const sessionKey = "library_rag_session_id";
+const themeKey = "library_rag_theme";
+const assistantPositionKey = "library_rag_assistant_position";
 const categoryFallback = ["文学", "历史", "科幻", "计算机", "艺术", "哲学", "社科", "教育", "医学", "自然科学", "经济管理"];
 
 let selectedCategory = "";
-let lastResults = [];
 let currentPage = 1;
-let pageSize = 20;
+let pageSize = 10;
 let sessionId = localStorage.getItem(sessionKey) || crypto.randomUUID();
+let dragState = null;
+
 localStorage.setItem(sessionKey, sessionId);
 
 function fieldValue(id) {
@@ -48,7 +57,7 @@ function locationText(item) {
   if (item.shelf_code) {
     return `${item.shelf_code}书架 第${text(item.shelf_row, "?")}行 第${text(item.shelf_col, "?")}列`;
   }
-  return "位置未登记";
+  return "位置信息未登记";
 }
 
 function availabilityText(item) {
@@ -60,6 +69,69 @@ function availabilityText(item) {
 
 function resetToFirstPage() {
   currentPage = 1;
+}
+
+function setTheme(theme) {
+  const normalized = theme === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", normalized);
+  localStorage.setItem(themeKey, normalized);
+  themeToggle.setAttribute("aria-pressed", String(normalized === "dark"));
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme") || "light";
+  setTheme(current === "dark" ? "light" : "dark");
+}
+
+function setAssistantOpen(open) {
+  assistantPopover.classList.toggle("open", open);
+  assistantPopover.setAttribute("aria-hidden", String(!open));
+  assistantLauncher.setAttribute("aria-expanded", String(open));
+  if (open) {
+    question.focus();
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function saveAssistantPosition(left, top) {
+  localStorage.setItem(assistantPositionKey, JSON.stringify({ left, top }));
+}
+
+function applyAssistantPosition(left, top) {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const launcherRect = assistantLauncher.getBoundingClientRect();
+  const shellRect = assistantShell.getBoundingClientRect();
+  const shellWidth = launcherRect.width || shellRect.width || 64;
+  const shellHeight = launcherRect.height || shellRect.height || 64;
+  const maxLeft = Math.max(12, viewportWidth - shellWidth - 12);
+  const maxTop = Math.max(12, viewportHeight - shellHeight - 12);
+  const nextLeft = clamp(left, 12, maxLeft);
+  const nextTop = clamp(top, 12, maxTop);
+  assistantShell.style.left = `${nextLeft}px`;
+  assistantShell.style.top = `${nextTop}px`;
+  assistantShell.style.right = "auto";
+  assistantShell.style.bottom = "auto";
+}
+
+function initializeAssistantPosition() {
+  const saved = localStorage.getItem(assistantPositionKey);
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (typeof parsed.left === "number" && typeof parsed.top === "number") {
+        applyAssistantPosition(parsed.left, parsed.top);
+        return;
+      }
+    } catch {}
+  }
+
+  const defaultLeft = window.innerWidth - 84;
+  const defaultTop = window.innerHeight - 84;
+  applyAssistantPosition(defaultLeft, defaultTop);
 }
 
 function renderCategories(categories = []) {
@@ -78,51 +150,6 @@ function renderCategories(categories = []) {
     });
     categoriesEl.appendChild(button);
   });
-}
-
-function renderResults(items, meta = {}) {
-  lastResults = items;
-  resultsEl.innerHTML = "";
-  const total = meta.total || 0;
-  const page = meta.page || currentPage;
-  const totalPages = meta.total_pages || 0;
-
-  if (items.length) {
-    const start = (page - 1) * pageSize + 1;
-    const end = start + items.length - 1;
-    resultCount.textContent = `共 ${total} 条，显示第 ${start}-${end} 条`;
-  } else {
-    resultCount.textContent = "没有匹配结果";
-  }
-
-  if (!items.length) {
-    resultsEl.innerHTML = `<div class="empty-card">没有找到匹配馆藏，可以换一个主角、主题词、ISBN 或分类再试。</div>`;
-    renderPagination({ total, page, total_pages: totalPages, has_prev: false, has_next: false });
-    return;
-  }
-
-  items.forEach((item, index) => {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "book-card";
-    card.innerHTML = `
-      <div class="book-main">
-        <span class="badge">${text(item.category, "未分类")}</span>
-        <strong>${text(item.title, "未知书名")}</strong>
-        <span>${text(item.author, "未知作者")}</span>
-      </div>
-      <div class="book-meta">
-        <span>编号 ${text(item.book_id)}</span>
-        <span>索书号 ${text(item.call_number)}</span>
-        <span>${locationText(item)}</span>
-        <span>${availabilityText(item)}</span>
-      </div>
-    `;
-    card.addEventListener("click", () => renderDetail(item));
-    resultsEl.appendChild(card);
-    if (index === 0) renderDetail(item);
-  });
-  renderPagination(meta);
 }
 
 function renderPagination(meta = {}) {
@@ -186,41 +213,56 @@ function renderDetail(item) {
       <span>楼层/区域</span><strong>${text(item.floor)} / ${text(item.area)}</strong>
       <span>可借状态</span><strong>${availabilityText(item)}</strong>
     </div>
-    <section>
-      <h3>书籍大意</h3>
-      <p>${text(item.plot_summary, "暂无内容概述。")}</p>
-    </section>
-    <section>
-      <h3>主角与主题</h3>
-      <p>${text(item.main_characters, "暂无主角信息")}；${text(item.subjects, "暂无主题词")}</p>
-    </section>
-    <section>
-      <h3>借阅信息</h3>
-      <p>${text(item.borrow_rule, "暂无借阅规则")}；开放时间：${text(item.open_time)}</p>
-    </section>
-    <section>
-      <h3>检索片段</h3>
-      <p>${text(item.excerpt, "暂无片段")}</p>
-    </section>
+    <section><h3>图书大意</h3><p>${text(item.plot_summary, "暂无内容概述。")}</p></section>
+    <section><h3>主角与主题</h3><p>${text(item.main_characters, "暂无主角信息")}；${text(item.subjects, "暂无主题词")}</p></section>
+    <section><h3>借阅信息</h3><p>${text(item.borrow_rule, "暂无借阅规则")}；开放时间：${text(item.open_time)}</p></section>
+    <section><h3>检索片段</h3><p>${text(item.excerpt, "暂无片段")}</p></section>
   `;
 }
 
-async function runSearch() {
-  statusEl.textContent = "检索中";
-  try {
-    const resp = await fetch("/api/catalog/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildSearchPayload()),
-    });
-    const data = await resp.json();
-    renderCategories(data.categories || []);
-    renderResults(data.results || [], data);
-    statusEl.textContent = data.fallback ? "未命中" : "馆藏已更新";
-  } catch {
-    statusEl.textContent = "服务不可用";
-    renderResults([]);
+function renderResults(items, meta = {}) {
+  resultsEl.innerHTML = "";
+  const total = meta.total || 0;
+  const page = meta.page || currentPage;
+  const totalPages = meta.total_pages || 0;
+
+  if (items.length) {
+    const start = (page - 1) * pageSize + 1;
+    const end = start + items.length - 1;
+    resultCount.textContent = `共 ${total} 条，显示第 ${start}-${end} 条`;
+  } else {
+    resultCount.textContent = "没有匹配结果";
   }
+
+  if (!items.length) {
+    resultsEl.innerHTML = `<div class="empty-card">没有找到匹配馆藏，可以换一个主角、主题词、ISBN 或分类再试。</div>`;
+    renderPagination({ total, page, total_pages: totalPages, has_prev: false, has_next: false });
+    return;
+  }
+
+  items.forEach((item, index) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "book-card";
+    card.innerHTML = `
+      <div class="book-main">
+        <span class="badge">${text(item.category, "未分类")}</span>
+        <strong>${text(item.title, "未知书名")}</strong>
+        <span>${text(item.author, "未知作者")}</span>
+      </div>
+      <div class="book-meta">
+        <span>编号 ${text(item.book_id)}</span>
+        <span>索书号 ${text(item.call_number)}</span>
+        <span>${locationText(item)}</span>
+        <span>${availabilityText(item)}</span>
+      </div>
+    `;
+    card.addEventListener("click", () => renderDetail(item));
+    resultsEl.appendChild(card);
+    if (index === 0) renderDetail(item);
+  });
+
+  renderPagination(meta);
 }
 
 function appendMessage(role, body, sources = []) {
@@ -241,6 +283,24 @@ function appendMessage(role, body, sources = []) {
   chat.scrollTop = chat.scrollHeight;
 }
 
+async function runSearch() {
+  statusEl.textContent = "检索中";
+  try {
+    const resp = await fetch("/api/catalog/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildSearchPayload()),
+    });
+    const data = await resp.json();
+    renderCategories(data.categories || []);
+    renderResults(data.results || [], data);
+    statusEl.textContent = data.fallback ? "未命中，使用兜底模式" : "馆藏已更新";
+  } catch {
+    statusEl.textContent = "服务不可用";
+    renderResults([]);
+  }
+}
+
 async function loadHealth() {
   try {
     const resp = await fetch("/api/health");
@@ -248,6 +308,45 @@ async function loadHealth() {
     statusEl.textContent = data.vector_store_ready ? "Milvus 已连接" : "BM25 兜底模式";
   } catch {
     statusEl.textContent = "服务不可用";
+  }
+}
+
+function beginDrag(event) {
+  if (assistantPopover.contains(event.target)) return;
+  dragState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    shellLeft: assistantShell.getBoundingClientRect().left,
+    shellTop: assistantShell.getBoundingClientRect().top,
+    moved: false,
+  };
+  assistantShell.classList.add("dragging");
+  assistantLauncher.setPointerCapture(event.pointerId);
+}
+
+function continueDrag(event) {
+  if (!dragState || event.pointerId !== dragState.pointerId) return;
+  const deltaX = event.clientX - dragState.startX;
+  const deltaY = event.clientY - dragState.startY;
+  if (!dragState.moved && (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4)) {
+    dragState.moved = true;
+  }
+  const nextLeft = dragState.shellLeft + deltaX;
+  const nextTop = dragState.shellTop + deltaY;
+  applyAssistantPosition(nextLeft, nextTop);
+}
+
+function endDrag(event) {
+  if (!dragState || event.pointerId !== dragState.pointerId) return;
+  assistantShell.classList.remove("dragging");
+  assistantLauncher.releasePointerCapture(event.pointerId);
+  const rect = assistantShell.getBoundingClientRect();
+  saveAssistantPosition(rect.left, rect.top);
+  const moved = dragState.moved;
+  dragState = null;
+  if (!moved) {
+    setAssistantOpen(!assistantPopover.classList.contains("open"));
   }
 }
 
@@ -268,6 +367,29 @@ clearFilters.addEventListener("click", () => {
   runSearch();
 });
 
+themeToggle.addEventListener("click", toggleTheme);
+assistantLauncher.addEventListener("pointerdown", beginDrag);
+assistantLauncher.addEventListener("pointermove", continueDrag);
+assistantLauncher.addEventListener("pointerup", endDrag);
+assistantLauncher.addEventListener("pointercancel", endDrag);
+assistantClose.addEventListener("click", () => setAssistantOpen(false));
+
+window.addEventListener("resize", () => {
+  const rect = assistantShell.getBoundingClientRect();
+  applyAssistantPosition(rect.left, rect.top);
+  saveAssistantPosition(assistantShell.getBoundingClientRect().left, assistantShell.getBoundingClientRect().top);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setAssistantOpen(false);
+});
+
+document.addEventListener("click", (event) => {
+  if (!assistantPopover.classList.contains("open")) return;
+  if (assistantPopover.contains(event.target) || assistantLauncher.contains(event.target)) return;
+  setAssistantOpen(false);
+});
+
 composer.addEventListener("submit", async (event) => {
   event.preventDefault();
   const body = question.value.trim();
@@ -275,6 +397,8 @@ composer.addEventListener("submit", async (event) => {
   appendMessage("user", body);
   question.value = "";
   statusEl.textContent = "回答生成中";
+  setAssistantOpen(true);
+
   try {
     const resp = await fetch("/api/chat", {
       method: "POST",
@@ -292,6 +416,9 @@ composer.addEventListener("submit", async (event) => {
   }
 });
 
+setTheme(localStorage.getItem(themeKey) || "light");
+setAssistantOpen(false);
+initializeAssistantPosition();
 renderCategories();
 loadHealth();
 runSearch();
